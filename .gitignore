@@ -58,3 +58,5 @@ next-env.d.ts
 *.pfx
 *.tsbuildinfo
 /graphify-out/
+.vercel
+.env*
