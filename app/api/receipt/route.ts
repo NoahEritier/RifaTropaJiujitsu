@@ -1,2 +1,16 @@
-import {env} from 'cloudflare:workers';import {admin,db,json,fail} from '@/lib/raffle';
-export async function GET(req:Request){if(!admin(req))return json({error:'Acceso no permitido'},403);try{const r=await db().prepare('SELECT receipt,mime FROM requests WHERE id=?').bind(new URL(req.url).searchParams.get('id')).first<{receipt:string,mime:string}>();if(!r||!env.BUCKET)return json({error:'No encontrado'},404);const file=await env.BUCKET.get(r.receipt);if(!file)return json({error:'No encontrado'},404);return new Response(file.body,{headers:{'Content-Type':r.mime,'Content-Disposition':`attachment; filename="comprobante.${r.mime==='application/pdf'?'pdf':r.mime==='image/png'?'png':'jpg'}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});}catch(e){return fail(e);}}
+import { env } from 'cloudflare:workers';
+import { authorize, db, fail, json, privateHeaders } from '@/lib/raffle';
+import { idPattern } from '@/lib/raffle-core';
+export async function GET(req: Request) {
+  try {
+    if(!await authorize(req)) return json({error:'Ingresá a Administración.'},401);
+    const id = new URL(req.url).searchParams.get('id') || '';
+    if(!idPattern.test(id)) return json({error:'Solicitud inválida.'},400);
+    const row = await db().prepare('SELECT receipt,mime FROM requests WHERE id=?').bind(id).first<{receipt:string;mime:string}>();
+    if(!row || !env.BUCKET) return json({error:'Comprobante no encontrado.'},404);
+    const object = await env.BUCKET.get(row.receipt);
+    if(!object) return json({error:'Comprobante no encontrado.'},404);
+    const ext = row.mime==='application/pdf' ? 'pdf' : row.mime==='image/png' ? 'png' : 'jpg';
+    return new Response(object.body,{headers:{...privateHeaders,'Content-Type':row.mime,'Content-Disposition':'attachment; filename="comprobante.'+ext+'"','Content-Security-Policy':"default-src 'none'; sandbox"}});
+  } catch(e) { return fail(e); }
+}

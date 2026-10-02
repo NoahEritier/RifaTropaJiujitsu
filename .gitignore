@@ -44,3 +44,17 @@ next-env.d.ts
 /.codex/
 /outputs/
 /work/
+# Claves de Workers, datos personales, comprobantes y respaldos
+.dev.vars*
+!.env.example
+/backups/
+/uploads/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.key
+*.p12
+*.pfx
+*.tsbuildinfo
+/graphify-out/

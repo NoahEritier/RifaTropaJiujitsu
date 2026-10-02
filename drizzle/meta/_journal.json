@@ -8,6 +8,13 @@
       "when": 1790899888564,
       "tag": "0000_early_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790903706251,
+      "tag": "0001_secure_reservations",
+      "breakpoints": true
     }
   ]
 }

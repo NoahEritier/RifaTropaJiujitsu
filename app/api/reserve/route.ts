@@ -1,18 +1,73 @@
-import {env} from 'cloudflare:workers';
-import {config,db,json,fail,ready,sameOrigin} from '@/lib/raffle';
-export async function POST(req:Request){let key='';let stored=false;try{
-if(!sameOrigin(req))return json({error:'Solicitud no permitida'},403);
-if(Number(req.headers.get('content-length')||0)>5500000)return json({error:'El comprobante debe pesar menos de 5 MB.'},413);
-const c=await config();if(!ready(c))return json({error:'Las reservas todavía no están habilitadas.'},409);
-const f=await req.formData();const id=String(f.get('id')||'');if(!/^[a-f0-9-]{36}$/.test(id))return json({error:'Solicitud inválida'},400);
-const existing=await db().prepare('SELECT id,total FROM requests WHERE id = ?').bind(id).first();if(existing)return json({request:existing});
-const name=String(f.get('name')||'').trim();const phone=String(f.get('phone')||'').replace(/\D/g,'');const numbers=JSON.parse(String(f.get('numbers')||'[]'));
-if(name.length<3||name.length>100||phone.length<8||phone.length>15||!Array.isArray(numbers)||numbers.length<1||numbers.length>2||new Set(numbers).size!==numbers.length||numbers.some((n:unknown)=>!Number.isInteger(n)||Number(n)<c.start||Number(n)>c.start+99))return json({error:'Revisá tus datos y elegí uno o dos números.'},400);
-const recent=await db().prepare('SELECT COUNT(*) AS n FROM requests WHERE phone = ? AND created > ?').bind(phone,Date.now()-60000).first<{n:number}>();if((recent?.n||0)>=3)return json({error:'Esperá un minuto antes de enviar otra solicitud.'},429);
-const file=f.get('receipt');if(!(file instanceof File)||file.size===0||file.size>5000000)return json({error:'Adjuntá un comprobante de hasta 5 MB.'},400);
-const bytes=new Uint8Array(await file.arrayBuffer());const mime=bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71?'image/png':String.fromCharCode(...bytes.slice(0,5))==='%PDF-'?'application/pdf':'';
-if(!mime)return json({error:'Usá un archivo JPG, PNG o PDF.'},400);if(!env.BUCKET)throw Error('Storage unavailable');
-key=`receipts/${id}/${crypto.randomUUID()}`;await env.BUCKET.put(key,bytes,{httpMetadata:{contentType:mime}});stored=true;const total=numbers.length===2?20000:12000;
-try{await db().batch([db().prepare('INSERT INTO requests (id,name,phone,total,status,receipt,mime,created) VALUES (?,?,?,?,?,?,?,?)').bind(id,name,phone,total,'pending',key,mime,Date.now()),...numbers.map((n:number)=>db().prepare('INSERT INTO tickets (number,request_id) VALUES (?,?)').bind(n,id))]);}catch(e){await env.BUCKET.delete(key);stored=false;console.error(e);const already=await db().prepare('SELECT id,total FROM requests WHERE id=?').bind(id).first();if(already)return json({request:already});return json({error:'Alguno de los números acaba de reservarse. Actualizá la grilla y elegí otro.'},409);}
-return json({request:{id,total,numbers}},201);
-}catch(e){if(stored&&env.BUCKET)await env.BUCKET.delete(key).catch(()=>{});return fail(e);}}
+import { env } from 'cloudflare:workers';
+import { BodyError, boundedBody, clientIp, config, consumeLimit, db, digest, expireReservations, fail, json, ready, sameOrigin } from '@/lib/raffle';
+import { detectMime, idPattern, MAX_FILE_BYTES, price, tokenPattern, validateParticipant } from '@/lib/raffle-core';
+type Existing = {id:string;total:number;numbers:string;expires:number;token_hash:string;fingerprint:string;status:string;receipt:string};
+const publicRequest = (row: Existing) => ({id:row.id,total:row.total,numbers:JSON.parse(row.numbers),expires:row.expires,status:row.status});
+export async function POST(req: Request) {
+  if(!sameOrigin(req)) return json({error:'Solicitud no permitida.'},403);
+  let uploaded = '';
+  try {
+    const edgeRate = await consumeLimit('reserve-ip',clientIp(req),20,60_000);
+    if(!edgeRate.allowed) return json({error:'Demasiados envíos. Esperá un minuto y reintentá.'},429,{'Retry-After':String(edgeRate.retry)});
+    const bytes = await boundedBody(req);
+    let form: FormData;
+    try { form = await new Response(bytes,{headers:{'Content-Type':req.headers.get('Content-Type') || ''}}).formData(); }
+    catch { return json({error:'No se pudo leer el formulario. Volvé a adjuntar tu comprobante.'},400); }
+    const id = String(form.get('id') || '');
+    const token = String(form.get('code') || '');
+    if(!idPattern.test(id) || !tokenPattern.test(token)) return json({error:'Código de solicitud inválido. Recargá la página.'},400);
+    const name = String(form.get('name') || '').trim();
+    const phone = String(form.get('phone') || '').replace(/\D/g,'');
+    let numbers: unknown;
+    try { numbers = JSON.parse(String(form.get('numbers') || '[]')); }
+    catch { return json({error:'Selección inválida.'},400); }
+    const c = await config();
+    try { validateParticipant(name,phone,numbers,c.start); }
+    catch(e) { return json({error:(e as Error).message},400); }
+    numbers.sort((a,b)=>a-b);
+    const file = form.get('receipt');
+    if(!(file instanceof File) || !file.size || file.size>MAX_FILE_BYTES)
+      return json({error:'Adjuntá un comprobante JPG, PNG o PDF de hasta 5 MB.'},400);
+    const fileBytes = new Uint8Array(await file.arrayBuffer());
+    const mime = detectMime(fileBytes);
+    if(!mime || mime!==file.type) return json({error:'El contenido no coincide con un JPG, PNG o PDF válido.'},400);
+    const tokenHash = await digest(token);
+    const fingerprint = await digest(JSON.stringify([name,phone,numbers,await digest(fileBytes)]));
+    await expireReservations();
+    const existing = await db().prepare('SELECT * FROM requests WHERE id=?').bind(id).first<Existing>();
+    if(existing) {
+      if(existing.token_hash!==tokenHash || existing.fingerprint!==fingerprint)
+        return json({error:'Este envío ya se usó con otros datos. Consultá tu código o iniciá una nueva solicitud.'},409);
+      return json({request:publicRequest(existing)});
+    }
+    if(!ready(c)) return json({error:'Las reservas no están habilitadas.'},409);
+    const rate = await consumeLimit('reserve-phone',phone,3,60_000);
+    if(!rate.allowed) return json({error:'Esperá un minuto antes de enviar otra solicitud.'},429,{'Retry-After':String(rate.retry)});
+    if(!env.BUCKET) throw new Error('Storage unavailable');
+    uploaded = 'receipts/'+id+'/'+crypto.randomUUID();
+    await env.BUCKET.put(uploaded,fileBytes,{httpMetadata:{contentType:mime}});
+    const created = Date.now();
+    const expires = created+c.reservationHours*60*60_000;
+    const total = price(numbers.length);
+    try {
+      await db().batch([
+        db().prepare('INSERT INTO requests(id,name,phone,total,status,receipt,mime,created,token_hash,fingerprint,numbers,expires) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)')
+          .bind(id,name,phone,total,'pending',uploaded,mime,created,tokenHash,fingerprint,JSON.stringify(numbers),expires),
+        ...numbers.map(n=>db().prepare('INSERT INTO tickets(number,request_id) VALUES(?,?)').bind(n,id)),
+      ]);
+    } catch(e) {
+      // Check commit outcome before deleting an object: a lost DB response must not destroy its receipt.
+      const winner = await db().prepare('SELECT * FROM requests WHERE id=?').bind(id).first<Existing>();
+      if(!winner || winner.receipt !== uploaded) await env.BUCKET.delete(uploaded);
+      if(winner && winner.token_hash===tokenHash && winner.fingerprint===fingerprint) return json({request:publicRequest(winner)});
+      const occupied = await db().prepare('SELECT number FROM tickets WHERE number IN (?,?)').bind(numbers[0],numbers[1]??numbers[0]).all<{number:number}>();
+      if(occupied.results.length) return json({error:'Alguno de tus números acaba de reservarse. Conservamos tu selección; quitá los ocupados y elegí otros.',conflicts:occupied.results.map(t=>t.number)},409);
+      if(!ready(await config())) return json({error:'La organización cerró las reservas. Tus datos se conservan.'},409);
+      return fail(e);
+    }
+    return json({request:{id,total,numbers,expires,status:'pending'}},201);
+  } catch(e) {
+    // Unknown database outcome: keep the object for reconciliation instead of deleting a possibly committed receipt.
+    return e instanceof BodyError ? json({error:e.message},e.status) : fail(e);
+  }
+}
