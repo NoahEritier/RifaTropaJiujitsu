@@ -5,6 +5,7 @@ type Existing = {id:string;total:number;numbers:string;expires:number;token_hash
 const publicRequest = (row: Existing) => ({id:row.id,total:row.total,numbers:JSON.parse(row.numbers),expires:row.expires,status:row.status});
 export async function POST(req: Request) {
   if(!sameOrigin(req)) return json({error:'Solicitud no permitida.'},403);
+  if(process.env.VERCEL && !remoteStorage())return json({error:'Las reservas esperan la configuración del almacenamiento privado.'},503);
   let uploaded = '';
   try {
     const edgeRate = await consumeLimit('reserve-ip',clientIp(req),20,60_000);

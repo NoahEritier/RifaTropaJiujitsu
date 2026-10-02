@@ -5,6 +5,6 @@ export async function GET() {
     await expireReservations();
     const c = await config();
     const rows = await db().prepare("SELECT t.number,r.status FROM tickets t JOIN requests r ON r.id=t.request_id WHERE r.status IN ('pending','approved')").all();
-    return json({remoteUploads:remoteStorage(),config:c,active:ready(c),tickets:rows.results});
+    return json({remoteUploads:remoteStorage(),config:c,active:ready(c) && (!process.env.VERCEL || remoteStorage()),tickets:rows.results});
   } catch(e) { return fail(e); }
 }
