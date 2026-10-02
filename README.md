@@ -1,140 +1,54 @@
-# Rifa Tropa Jiu Jitsu · Dolores
+# Rifa Tropa Jiu Jitsu
 
-Aplicación para una rifa de 100 números: Smart TV Noblex 50″ o premio opcional de $500.000. Un número cuesta **$12.000**; dos cuestan **$20.000**. La organización confirma los pagos manualmente.
+Aplicación Next.js para 100 números, selección de uno o dos, comprobantes privados y aprobación manual de pagos. Un número cuesta $12.000 y dos $20.000; el servidor calcula el importe y la base protege la numeración y las reservas simultáneas.
 
-## Instalación en Windows, macOS o Linux
+## Instalación local
 
-Requisitos: Node.js 24 LTS (mínimo 22.13 para la aplicación; las pruebas usan Node 24), Git y pnpm. El proyecto utiliza Vinext/React, Cloudflare D1 (SQLite) y R2. Para desarrollo, ambos servicios se emulan en la computadora: no se necesita una cuenta Cloudflare ni un servidor de base de datos.
+Requisitos: Node.js 24 y pnpm 11.25.0.
 
-1. Clonar este repositorio y entrar en la carpeta:
-   ~~~sh
-   git clone https://github.com/NoahEritier/RifaTropaJiujitsu.git
-   cd RifaTropaJiujitsu
-   ~~~
-2. Si no hay pnpm, instalar la versión declarada en package.json:
-   ~~~sh
-   npm install --global pnpm@11.25.0
-   ~~~
-3. Instalar las versiones fijadas, crear la clave local y aplicar las migraciones:
-   ~~~sh
-   pnpm install --frozen-lockfile --prefer-offline
-   npm run local:setup
-   npm run dev
-   ~~~
-4. Abrir **http://127.0.0.1:5173**. Administración está en **/admin** y la consulta privada en **/consulta**.
+```sh
+pnpm install --frozen-lockfile
+pnpm run local:setup
+pnpm run dev
+```
 
-La clave local se genera aleatoriamente en **.dev.vars**, campo ADMIN_KEY. Abrí ese archivo en tu editor para copiarla al ingresar al panel. No se muestra en logs, README ni código. Nunca compartas el archivo. .env.example contiene sólo un ejemplo, no una clave utilizable.
+Abrir http://127.0.0.1:5173 y /admin. La clave está en `.env.local`, nunca en Git ni en el navegador del participante. El instalador reutiliza la clave anterior de `.dev.vars` si existe. La base SQLite y los comprobantes están en `.data/state/`, fuera de public/.
 
-La base, los comprobantes y su metadata persisten juntos en **.wrangler/state/** y sobreviven al reinicio. No borrar esa carpeta: borrar su contenido elimina los datos locales. node_modules y .sites-runtime se pueden regenerar. Los datos locales son independientes de los de producción.
+No hace falta Docker ni una cuenta externa para desarrollar. En local no configurar TURSO_DATABASE_URL ni BLOB_READ_WRITE_TOKEN: esas variables activan los servicios remotos. Las reservas empiezan cerradas. Completar alias, titular, WhatsApp con país, fecha, mecanismo, premio opcional, condiciones y plazo; confirmar 00–99 o 1–100 antes de abrir. La primera solicitud bloquea esa numeración permanentemente.
 
-## Preparar y abrir el sorteo
+## Uso y seguridad
 
-Desde Administración completar:
+La elección visual no bloquea un número. La reserva completa se confirma mediante una transacción; si hay un conflicto no se guarda una reserva parcial. Un envío repetido usa el mismo identificador y código privado. Los pagos aprobados conservan sus números; los pendientes vencidos se liberan al consultar disponibilidad o gestionar solicitudes.
 
-- Alias y titular de la cuenta.
-- WhatsApp con país y código de área, por ejemplo el formato numérico de WhatsApp.
-- Fecha o condición de realización.
-- Mecanismo para elegir al ganador y publicar el resultado.
-- Condiciones del premio opcional: quién elige TV o efectivo y cómo se entrega.
-- Condiciones de participación, pagos, rechazos y resolución de transferencias si una solicitud vence.
-- Numeración **00–99** o **1–100**, y confirmación de esa elección.
-- Plazo de reservas pendientes entre 1 y 720 horas (por defecto 48 horas).
+Los comprobantes JPG, PNG y PDF admiten hasta 5 MB. Se validan tamaño, MIME y firma del archivo en el servidor. En Vercel se cargan directamente a un Blob privado mediante un permiso limitado a un archivo y con vencimiento; la función recibe solamente datos pequeños, vuelve a verificar el archivo y registra la reserva. El código permite consultar el estado en /consulta sin revelar nombre ni teléfono.
 
-Guardar y habilitar reservas sólo cuando la información sea definitiva. La aplicación exige todos estos datos antes de abrir.
+Administración usa cookies HttpOnly/SameSite, sesiones de cuatro horas, protección de origen, límite persistente de intentos, búsqueda, filtros, aprobación/rechazo y CSV. Los comprobantes se descargan únicamente con sesión autorizada. Un comprobante no acredita por sí solo un pago: la organización verifica la transferencia.
 
-La numeración se bloquea permanentemente al recibir la primera solicitud, incluso si después se rechaza o vence. Para organizar otra rifa, usar otra base/proyecto: no modificar manualmente el historial de una rifa existente. Cambiar el plazo sólo afecta a solicitudes nuevas.
+## Verificación
 
-El dinero del premio opcional y las características del televisor del afiche son los del proyecto actual; el campo de Administración permite definir sus condiciones, no sustituye la información del afiche.
+```sh
+pnpm run typecheck
+pnpm run lint
+pnpm test
+pnpm run security:audit
+pnpm run secrets:check
+pnpm run build
+```
 
-## Reservas, pagos y privacidad
+Con el servidor local iniciado y una base vacía/cerrada, `node tests/api-smoke.mjs` prueba el flujo HTTP y elimina sus datos ficticios. `node tests/browser-smoke.mjs` requiere Playwright y Chromium/Edge; admite PLAYWRIGHT_MODULE_PATH y BROWSER_EXECUTABLE. No ejecutar estos flujos contra una base real con participantes.
 
-- Elegir uno o dos números no los bloquea. Se reservan al enviar el formulario con comprobante.
-- El servidor valida números, datos y comprobante, calcula el importe y registra solicitud y números en una transacción.
-- La clave única de cada número impide reservas duplicadas. Reintentar el mismo envío devuelve la misma solicitud; no genera otro pago ni otra reserva.
-- Si falla el envío, se conservan datos, archivo y selección. Si otro participante ocupó un número, aparece un aviso para reemplazarlo.
-- JPG, PNG y PDF: hasta **5.000.000 bytes** por archivo. Se verifican tamaño, firma y tipo, incluyendo el límite del cuerpo aunque no exista Content-Length. La página muestra vista previa y progreso.
-- Guardar el código privado de 64 caracteres recibido. La consulta lo envía por POST, sin incluirlo en URL ni mostrar datos personales o comprobantes. Es un secreto de consulta: no compartirlo.
-- Si se corta la conexión después de enviar, consultar ese mismo código antes de volver a transferir. El reintento debe conservar los datos del envío original.
-- Administración usa sesiones de cuatro horas en cookies HttpOnly y SameSite=Strict (Secure en HTTPS). La clave no se guarda en el navegador. Cada dirección dispone de cinco intentos de ingreso por 15 minutos; cerrar sesión revoca el acceso.
-- El panel permite buscar por nombre, WhatsApp o número, filtrar estados y revisar importes aprobados y pendientes. Hay paginación de 50 solicitudes, con resumen sobre toda la base.
-- Sólo aprobar tras verificar la acreditación en la cuenta: adjuntar una imagen no prueba que el dinero se haya recibido.
-- Rechazar libera los números. Las reservas pendientes vencen al llegar su plazo; se liberan antes de actualizar la grilla, consultar, reservar o administrar. Sin actividad, la marca se actualiza en la próxima operación. Los pagos aprobados no vencen.
-- Los números originales permanecen en el historial aunque se liberen. No volver a aprobar una solicitud rechazada o vencida: resolver la transferencia con el participante.
-- Los comprobantes se conservan privados en R2 y sólo se descargan con sesión de Administración. No habilitar una URL pública del bucket.
+Para probar la compilación local: detener desarrollo, ejecutar `pnpm run build` y `pnpm start`. Definir ALLOW_LOCAL_DATA=1 sólo en esa terminal local. En Vercel siempre se exige base persistente; no existe fallback a archivos efímeros.
 
-## Verificaciones
+## Respaldo y recuperación local
 
-~~~sh
-npm run typecheck
-npm run lint
-npm test
-npm run secrets:check
-npm run security:audit
-npm run build
-~~~
+Detener el servidor y ejecutar `pnpm run backup`. Se copia la base completa y los comprobantes, con un manifiesto de hashes y la versión del lockfile, a backups/. Recuperar con `pnpm run restore -- backups/NOMBRE`, usando las mismas dependencias. La herramienta verifica integridad y conserva el estado anterior en `.data/previous-*`.
 
-GitHub Actions ejecuta estos controles al subir cambios o abrir un pull request.
+Los respaldos antiguos de Cloudflare continúan preservados en backups/ y `.wrangler/`. No son intercambiables con el formato de datos de Next.js; no borrarlos ni restaurarlos sobre `.data/`. Esta adaptación crea una base local nueva y no mueve ni elimina datos anteriores. Si la base anterior contiene participantes, migrarlos y comprobar cada comprobante antes de abrir la nueva.
 
-Las pruebas de negocio usan SQLite aislado, incluidas dos conexiones simultáneas. Para probar HTTP y navegador, usar exclusivamente una **base local vacía, con reservas cerradas**:
+## GitHub y Vercel
 
-~~~sh
-node tests/api-smoke.mjs
-~~~
+Repositorio: https://github.com/NoahEritier/RifaTropaJiujitsu. Proyecto Vercel: noaheritiers-projects/rifa-tropa. La configuración vercel.json usa Next.js y `next build`; genera `.next/routes-manifest.json` que el despliegue anterior no producía.
 
-La prueba HTTP crea participantes ficticios, comprueba cargas de hasta 5 MB, reenvíos, carreras, aprobación, rechazo, vencimiento, consultas y CSV. Después elimina únicamente sus solicitudes y comprobantes y restaura la configuración.
+Para producción hacen falta Turso (SQLite persistente), Vercel Blob **privado**, una ADMIN_KEY aleatoria propia de producción y las migraciones. Ver [docs/PUBLICACION.md](docs/PUBLICACION.md). No subir `.env*`, `.dev.vars`, `.data`, `.wrangler`, `.vercel`, respaldos ni CSV reales. `.env.example` es el único archivo de ejemplo publicable.
 
-tests/browser-smoke.mjs requiere Playwright y un navegador instalados. Puede recibir PLAYWRIGHT_MODULE_PATH (ruta a index.mjs de Playwright), BROWSER_EXECUTABLE y TEST_BASE_URL. Comprueba celular y escritorio, errores de carga, conservación del formulario, reserva, aprobación, consulta, exportación y cierre de sesión. No ejecutarla sobre una rifa con participantes. Las capturas quedan en .sites-runtime/qa/, fuera de Git.
-
-## Exportación y respaldo
-
-Desde el panel se pueden exportar **participantes, números y pagos** a CSV. Los importes están en pesos enteros y las fechas en ISO UTC. La exportación incluye todos los registros, independientemente del filtro de pantalla. Se escapan comillas y se neutralizan fórmulas de planillas. El CSV contiene datos personales: guardarlo con acceso restringido. No incluye los comprobantes ni los códigos privados; **no reemplaza un respaldo**.
-
-Para un respaldo local completo:
-
-1. Detener el servidor con Ctrl+C. Si se usa otro puerto, configurar LOCAL_PORT.
-2. Ejecutar:
-   ~~~sh
-   npm run backup
-   ~~~
-3. Guardar la carpeta generada dentro de backups/ en otra ubicación privada. Contiene base y comprobantes, inventario y hashes SHA-256. Conservar también este commit, pnpm-lock.yaml y .dev.vars por separado y de forma privada.
-
-Para recuperar:
-
-1. Detener el servidor.
-2. Copiar la carpeta del respaldo a backups/ de este proyecto.
-3. Usar el mismo lockfile y versión de dependencias.
-4. Ejecutar:
-   ~~~sh
-   npm run restore -- backups/NOMBRE-DE-LA-CARPETA
-   npm run dev
-   ~~~
-5. Revisar configuración, reservas y descarga de comprobantes. La herramienta verifica hashes y conserva el estado anterior en .wrangler/previous-... antes de reemplazarlo. Si falla el reemplazo, restaura el estado anterior.
-
-Son respaldos del emulador local, no exportaciones portables hacia producción. El procedimiento de producción está en [docs/PUBLICACION.md](docs/PUBLICACION.md).
-
-## GitHub
-
-El remoto origin ya apunta a **NoahEritier/RifaTropaJiujitsu**. .gitignore excluye claves, estado local, comprobantes, respaldos, dependencias y artefactos de compilación. Sólo .env.example puede publicarse como ejemplo.
-
-Antes de subir:
-
-~~~sh
-npm run secrets:check
-git status
-git diff
-~~~
-
-No incluir .dev.vars, .env con valores reales, .wrangler, backups, comprobantes ni CSV de participantes. La detección por patrones revisa también el historial disponible, pero no puede garantizar encontrar todo secreto. Si una clave se publicó alguna vez, revocarla; borrarla del último commit no basta.
-
-## Compilación y publicación
-
-~~~sh
-npm run build
-npm start
-~~~
-
-npm start ejecuta el Worker compilado en loopback y comparte la misma persistencia local. Se necesita haber corrido local:setup. Puede usarse otro puerto con npm start -- --port 8787.
-
-Este proyecto conserva el manifiesto de Sites .openai/hosting.json. Publicar mediante Sites, con D1 y R2 reales y ADMIN_KEY como secreto de producción. **wrangler.local.json es sólo para desarrollo**: el identificador de base es un marcador local, no una base de producción. No usarlo para desplegar.
-
-Ver [docs/PUBLICACION.md](docs/PUBLICACION.md) para publicar y respaldar en producción, y [docs/AUDITORIA.md](docs/AUDITORIA.md) para los cambios, pruebas y límites de esta revisión.
+El código de Cloudflare/Sites que permanece en build/, scripts/ y vite.config.ts es histórico: no participa de dev/build/start y sus dependencias fueron retiradas. No ejecutar esos scripts. La configuración activa está en Next.js y los scripts de setup, migración y respaldo.

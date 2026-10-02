@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, mkdirSync } from 'node:fs';
+import {createHash} from 'node:crypto';
+import { readFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 const playwrightModule=process.env.PLAYWRIGHT_MODULE_PATH;
 const {chromium}=await import(playwrightModule?pathToFileURL(playwrightModule).href:'playwright');
 const base=process.env.TEST_BASE_URL||'http://127.0.0.1:5173';
 if(!['127.0.0.1','localhost'].includes(new URL(base).hostname))throw Error('Prueba sólo local.');
-const key=readFileSync('.dev.vars','utf8').match(/ADMIN_KEY\s*=\s*"([^"]+)"/)?.[1];
-const dbDirectory='.wrangler/state/v3/d1/miniflare-D1DatabaseObject';
-const dbPath=dbDirectory+'/'+readdirSync(dbDirectory).find(f=>f.endsWith('.sqlite'));
+const key=readFileSync('.env.local','utf8').match(/ADMIN_KEY\s*=\s*"([^"]+)"/)?.[1];
+const dbPath='.data/state/database.sqlite';
 let db=new DatabaseSync(dbPath);
 assert.equal(db.prepare('SELECT COUNT(*) AS n FROM requests').get().n,0,'Sólo correr con base vacía.');
 const initialRow=db.prepare('SELECT value FROM settings WHERE id=1').get();
@@ -99,10 +98,8 @@ try {
       else db.exec('DELETE FROM settings WHERE id=1');
     }
     db.exec('COMMIT');
+    db.prepare('DELETE FROM rate_limits WHERE key=?').run(createHash('sha256').update(key+':login:local').digest('hex'));
   }finally{db.close();}
-  for(const object of objects){
-    const result=spawnSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','r2','object','delete','site-creator-r2/'+object,'--local','--config','wrangler.local.json','--persist-to','.wrangler/state'],{encoding:'utf8'});
-    if(result.status!==0)console.warn('No se pudo limpiar un comprobante temporal.');
-  }
+  for(const object of objects)unlinkSync('.data/state/'+object);
   console.log('Configuración inicial restaurada; solicitudes de QA eliminadas.');
 }

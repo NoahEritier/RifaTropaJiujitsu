@@ -60,3 +60,4 @@ next-env.d.ts
 /graphify-out/
 .vercel
 .env*
+/.data/

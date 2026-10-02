@@ -1,28 +1,21 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, unlinkSync } from 'node:fs';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { spawnSync } from 'node:child_process';
 const base=process.env.TEST_BASE_URL||'http://127.0.0.1:5173';
 if(!['127.0.0.1','localhost'].includes(new URL(base).hostname))throw Error('Estas pruebas sólo admiten el entorno local.');
-const key=readFileSync('.dev.vars','utf8').match(/ADMIN_KEY\s*=\s*"([^"]+)"/)?.[1];
+const key=readFileSync('.env.local','utf8').match(/ADMIN_KEY\s*=\s*"([^"]+)"/)?.[1];
 assert.ok(key,'Falta la clave local');
-const ip='192.0.2.17';
+const ip='local';
 let cookie='';
 let original;
 const ids=[],codes=[];
 const headers={'Origin':base,'CF-Connecting-IP':ip};
 async function api(path,{body,method='GET',authenticated=true,...extra}={}){
-  let response=await fetch(base+path,{
+  const response=await fetch(base+path,{
     method,headers:{...headers,...(authenticated&&cookie?{Cookie:cookie}:{}),...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{}),...extra.headers},
     ...(body?{body:body instanceof FormData?body:JSON.stringify(body)}:{}),
   });
-  // Wrangler may restart after tests edit its local SQLite store. DELETE logout
-  // is idempotent; retry only this explicit development-server restart response.
-  if(method==='DELETE' && response.status===503 && (await response.clone().text()).includes('Your worker restarted mid-request')) {
-    await new Promise(resolve=>setTimeout(resolve,250));
-    response=await fetch(base+path,{method,headers:{...headers,...(authenticated&&cookie?{Cookie:cookie}:{}),...extra.headers}});
-  }
   const result=response.headers.get('content-type')?.includes('application/json')?await response.json():await response.text();
   return {response,body:result};
 }
@@ -36,11 +29,7 @@ function form(a,{name='Participante de prueba',mime='image/png',bytes=png,total=
   f.set('numbers',JSON.stringify(a.numbers));f.set('total',total);
   f.set('receipt',new File([bytes],'prueba.png',{type:mime}));return f;
 }
-function localDatabase(){
-  const directory='.wrangler/state/v3/d1/miniflare-D1DatabaseObject';
-  const path=readdirSync(directory).find(f=>f.endsWith('.sqlite'));
-  assert.ok(path,'No se encuentra D1 local');return new DatabaseSync(directory+'/'+path);
-}
+function localDatabase(){return new DatabaseSync('.data/state/database.sqlite');}
 async function settings(c){return api('/api/admin',{method:'POST',body:{action:'settings',config:c}});}
 function ok(label){console.log('OK:',label);}
 try{
@@ -63,7 +52,7 @@ try{
   assert.equal(race.filter(r=>r.response.status===201).length,1);
   assert.equal(race.filter(r=>r.response.status===409).length,1);
   const winner=race[0].response.status===201?alice:bob,winnerResult=race.find(r=>r.response.status===201);
-  assert.equal(winnerResult.body.request.total,20000);ok('concurrencia real D1/R2 y precio alterado ignorado');
+  assert.equal(winnerResult.body.request.total,20000);ok('concurrencia real SQLite y almacenamiento privado y precio alterado ignorado');
   const double=await Promise.all([api('/api/reserve',{method:'POST',body:form(winner)}),api('/api/reserve',{method:'POST',body:form(winner)})]);
   assert.ok(double.every(r=>r.response.status===200));assert.ok(double.every(r=>r.body.request.id===winner.id));ok('doble envío idempotente');
   const changed=await api('/api/reserve',{method:'POST',body:form(winner,{name:'Otra persona'})});
@@ -132,11 +121,7 @@ try{
       for(const [scope,subject] of subjects)local.prepare('DELETE FROM rate_limits WHERE key=?').run(createHash('sha256').update(key+':'+scope+':'+subject).digest('hex'));
       if(cookie)local.prepare('DELETE FROM admin_sessions WHERE token_hash=?').run(createHash('sha256').update(key+':session:'+cookie.slice(13)).digest('hex'));
     }finally{local.close();}
-    // Remove only objects created by these tests.
-    for(const object of objects){
-      const result=spawnSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','r2','object','delete','site-creator-r2/'+object,'--local','--config','wrangler.local.json','--persist-to','.wrangler/state'],{encoding:'utf8'});
-      if(result.status!==0){mkdirSync('.sites-runtime',{recursive:true});writeFileSync('.sites-runtime/test-cleanup-error.txt',result.stderr||result.stdout);console.warn('Revisar limpieza del objeto de prueba: se conservó el error en .sites-runtime.');}
-    }
+    for(const object of objects)unlinkSync('.data/state/'+object);
     console.log('Datos temporales eliminados; configuración inicial restaurada.');
   }
 }

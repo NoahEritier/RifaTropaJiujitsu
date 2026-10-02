@@ -1,9 +1,8 @@
-import { env } from 'cloudflare:workers';
+import { database } from './database';
 import { defaults, MAX_BODY_BYTES, type RaffleConfig } from './raffle-core';
 export { defaults, ready, price } from './raffle-core';
 export function db() {
-  if (!env.DB) throw new Error('Database unavailable');
-  return env.DB;
+  return database();
 }
 export async function config(): Promise<RaffleConfig> {
   const row = await db().prepare('SELECT value FROM settings WHERE id=1').first<{value:string}>();
@@ -22,8 +21,12 @@ export function fail(error: unknown) {
   return json({ error: 'No pudimos completar la operación. Tus datos y tu selección se conservan; volvé a intentar.' }, 503);
 }
 export function sameOrigin(req: Request) {
-  return req.headers.get('Origin') === new URL(req.url).origin
-    && req.headers.get('Sec-Fetch-Site') !== 'cross-site';
+  try {
+    const origin=new URL(req.headers.get('Origin')||'');
+    const host=req.headers.get('host')||new URL(req.url).host;
+    const protocol=process.env.VERCEL?'https:':new URL(req.url).protocol;
+    return origin.host===host && origin.protocol===protocol && req.headers.get('Sec-Fetch-Site')!=='cross-site';
+  } catch {return false;}
 }
 export async function digest(value: string | Uint8Array) {
   const data = typeof value === 'string' ? new TextEncoder().encode(value) : value;
@@ -31,7 +34,7 @@ export async function digest(value: string | Uint8Array) {
   return Array.from(new Uint8Array(hash), n => n.toString(16).padStart(2, '0')).join('');
 }
 export function secret() {
-  const key = env.ADMIN_KEY;
+  const key = process.env.ADMIN_KEY;
   if (!key || key.length < 32 || key.startsWith('replace-')) throw new Error('Admin secret not configured');
   return key;
 }
@@ -47,8 +50,8 @@ export async function consumeLimit(scope: string, subject: string, limit: number
   return { allowed: !!row && row.count <= limit, retry: Math.max(1, Math.ceil(((row?.reset_at ?? now + windowMs) - now)/1000)) };
 }
 export function clientIp(req: Request) {
-  // Trust only the edge-provided address; do not trust arbitrary X-Forwarded-For.
-  return req.headers.get('CF-Connecting-IP') || 'local';
+  // Vercel overwrites X-Forwarded-For at its edge. Local headers are untrusted.
+  return process.env.VERCEL ? req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown' : 'local';
 }
 export async function authorize(req: Request) {
   const cookie = req.headers.get('Cookie')?.split(';').map(c => c.trim()).find(c => c.startsWith('raffle_admin='))?.slice(13);
@@ -58,7 +61,7 @@ export async function authorize(req: Request) {
 }
 export function sessionCookie(req: Request, token: string, maxAge = 14400) {
   return 'raffle_admin=' + token + '; Path=/; HttpOnly; SameSite=Strict; Max-Age=' + maxAge
-    + (new URL(req.url).protocol === 'https:' ? '; Secure' : '');
+    + (process.env.VERCEL || new URL(req.url).protocol === 'https:' ? '; Secure' : '');
 }
 export async function expireReservations() {
   await db().batch([

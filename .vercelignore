@@ -1,0 +1,11 @@
+.data
+.wrangler
+.vinext
+.sites-runtime
+backups
+outputs
+work
+build
+.openai
+.env*
+.dev.vars*

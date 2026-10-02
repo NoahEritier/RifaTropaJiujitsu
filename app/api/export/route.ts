@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     if(type==='numbers') {
       header=['Número','Solicitud','Estado'];
       const rows = await db().prepare('SELECT t.number,r.id,r.status FROM tickets t JOIN requests r ON r.id=t.request_id ORDER BY t.number').all<{number:number;id:string;status:RequestStatus}>();
-      const settings = await db().prepare('SELECT json_extract(value,"$.start") AS start FROM settings WHERE id=1').first<{start:number}>();
+      const settings = await db().prepare("SELECT json_extract(value,'$.start') AS start FROM settings WHERE id=1").first<{start:number}>();
       records=Array.from({length:100},(_,i)=>{
         const number=i+(settings?.start??1),row=rows.results.find(r=>r.number===number);
         return [String(number).padStart(2,'0'),row?.id||'',row?statusLabels[row.status]:'Disponible'];

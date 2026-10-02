@@ -1,3 +1,5 @@
+> Informe histórico de la implementación Cloudflare. La adaptación vigente a Next.js y Vercel está documentada en ADAPTACION-VERCEL.md; las instrucciones actuales están en README.md y PUBLICACION.md.
+
 # Auditoría e implementación · 1 de octubre de 2026
 
 Se revisaron el código propio de la rifa, rutas públicas/privadas, esquema y migraciones, configuración de ejecución, scripts, Git y dependencias. Se comprobaron tipos, lint, compilación, restricciones de SQLite/D1, flujo HTTP y navegador real. Esto no equivale a una auditoría externa de la plataforma de hosting.

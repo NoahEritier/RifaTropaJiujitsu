@@ -14,7 +14,7 @@ const running=await new Promise(resolveResult=>{
   socket.once('error',()=>resolveResult(false));
 });
 if(running)throw Error('Detené la página local antes del respaldo o la recuperación. LOCAL_PORT permite indicar otro puerto.');
-const state=resolve(root,'.wrangler/state'),backupRoot=resolve(root,'backups');
+const state=resolve(root,'.data/state'),backupRoot=resolve(root,'backups');
 const lockHash=createHash('sha256').update(await readFile('pnpm-lock.yaml')).digest('hex');
 function inside(base,path) {const rel=relative(base,path);return rel!==''&&!rel.startsWith('..')&&!isAbsolute(rel);}
 async function inventory(base,directory='') {
@@ -47,11 +47,11 @@ if(mode==='create'){
   const manifest=JSON.parse(await readFile(join(folder,'manifest.json'),'utf8'));
   if(manifest.version!==1||manifest.lockHash!==lockHash)throw Error('El respaldo pertenece a otra versión de dependencias. Recuperá con el mismo lockfile.');
   if(JSON.stringify(await inventory(join(folder,'state')))!==JSON.stringify(manifest.files))throw Error('El respaldo está incompleto o fue modificado.');
-  const stage=resolve(root,'.wrangler/restored-'+Date.now());
-  if(!inside(resolve(root,'.wrangler'),state)||!inside(resolve(root,'.wrangler'),stage))throw Error('Destino de recuperación inválido.');
+  const stage=resolve(root,'.data/restored-'+Date.now());
+  if(!inside(resolve(root,'.data'),state)||!inside(resolve(root,'.data'),stage))throw Error('Destino de recuperación inválido.');
   await cp(join(folder,'state'),stage,{recursive:true,errorOnExist:true,force:false});
   let previous='';
-  try{await stat(state);previous=resolve(root,'.wrangler/previous-'+Date.now());await rename(state,previous);}catch(e){if(e.code!=='ENOENT')throw e;}
+  try{await stat(state);previous=resolve(root,'.data/previous-'+Date.now());await rename(state,previous);}catch(e){if(e.code!=='ENOENT')throw e;}
   try{await rename(stage,state);}catch(e){if(previous)await rename(previous,state);throw e;}
   console.log('Respaldo recuperado. El estado anterior quedó preservado en',previous||'(no existía)');
 }

@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { upload } from '@vercel/blob/client';
 import { Ticket, ShieldCheck, Check, Copy, ChevronDown } from 'lucide-react';
 import { detectMime, MAX_FILE_BYTES, money, type PublicData } from '@/lib/raffle-core';
 
@@ -24,6 +25,7 @@ export default function Page() {
   const [recovery,setRecovery]=useState('');
   const attempt=useRef<Attempt|null>(null);
   const formRef=useRef<HTMLFormElement>(null);
+  const uploaded=useRef<{file:File;id:string;pathname:string}|null>(null);
   const fileVersion=useRef(0);
   const submitting=useRef(false);
   const xhrRef=useRef<XMLHttpRequest|null>(null);
@@ -74,7 +76,22 @@ export default function Page() {
     // Display the code after any ambiguous network outcome; retries reuse this same code.
     setRecovery(current.code);
     try {
-      const result=await new Promise<{id:string;total:number;numbers:number[];expires:number}>((resolve,reject)=>{
+      let result: {id:string;total:number;numbers:number[];expires:number};
+      if(data?.remoteUploads) {
+        if(uploaded.current?.file!==file || uploaded.current.id!==current.id) {
+          const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(current.code))),n=>n.toString(16).padStart(2,'0')).join('');
+          const pathname='receipts/'+current.id+'/'+hash+'/'+crypto.randomUUID();
+          const blob=await upload(pathname,file,{access:'private',contentType:file.type,handleUploadUrl:'/api/upload',clientPayload:JSON.stringify(current),
+            onUploadProgress:event=>setProgress(Math.round(event.percentage))});
+          uploaded.current={file,id:current.id,pathname:blob.pathname};
+        }
+        setProgress(100);
+        const response=await fetch('/api/reserve',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({...current,name:form.get('name'),phone:form.get('phone'),numbers:selected,receiptPath:uploaded.current.pathname,mime:file.type})});
+        const body=await response.json() as {error?:string;request:Confirmation};
+        if(!response.ok)throw Error(body.error||'No se pudo registrar la solicitud.');
+        result=body.request;
+      } else result=await new Promise<{id:string;total:number;numbers:number[];expires:number}>((resolve,reject)=>{
         const xhr=new XMLHttpRequest();xhrRef.current=xhr;
         xhr.open('POST','/api/reserve');xhr.timeout=120000;
         xhr.upload.onprogress=event=>{if(event.lengthComputable)setProgress(Math.round(event.loaded/event.total*100));};
@@ -92,7 +109,7 @@ export default function Page() {
         xhr.send(form);
       });
       setConfirmation({...result,code:current.code});
-      attempt.current=null;setRecovery('');select([]);setFile(null);
+      attempt.current=null;uploaded.current=null;setRecovery('');select([]);setFile(null);
       formRef.current?.reset();
       await load();
     } catch(e) {setError((e as Error).message);await load();}

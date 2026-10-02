@@ -1,19 +1,25 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { randomBytes } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 process.chdir(fileURLToPath(new URL('..',import.meta.url)));
-mkdirSync('.sites-runtime',{recursive:true});
-if (!existsSync('.sites-runtime/execution-profile.json'))
-  writeFileSync('.sites-runtime/execution-profile.json',JSON.stringify({executionProfile:'portable'}));
-if (!existsSync('.dev.vars'))
-  writeFileSync('.dev.vars','# Clave privada de desarrollo. No subir a Git.\nADMIN_KEY="'+randomBytes(32).toString('hex')+'"\n',{mode:0o600});
-if (!/ADMIN_KEY\s*=\s*["']?[^\r\n"']{32,}/.test(readFileSync('.dev.vars','utf8')))
-  throw new Error('Definí ADMIN_KEY con al menos 32 caracteres en .dev.vars.');
-const result=spawnSync(process.execPath,[
-  '--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js',
-  'd1','migrations','apply','DB','--local','--config','wrangler.local.json','--persist-to','.wrangler/state',
-],{stdio:'inherit'});
-if(result.status!==0)process.exit(result.status??1);
-console.log('Base de datos lista. Comprobantes privados en .wrangler/state. Clave local en .dev.vars (no se imprime).');
-console.log('Ejecutá npm run dev y abrí http://localhost:5173. Configurá el sorteo desde /admin.');
+mkdirSync('.data/state/receipts',{recursive:true});
+let environment=existsSync('.env.local')?readFileSync('.env.local','utf8'):'';
+if(!/^ADMIN_KEY=/m.test(environment)) {
+  const prior=existsSync('.dev.vars')?readFileSync('.dev.vars','utf8').match(/ADMIN_KEY\s*=\s*"([^"\r\n]{32,})"/)?.[1]:null;
+  environment+='\nADMIN_KEY="'+(prior||randomBytes(32).toString('hex'))+'"\n';
+  writeFileSync('.env.local',environment,{mode:0o600});
+}
+const adminKey=environment.match(/^ADMIN_KEY\s*=\s*["']?([^"'\r\n]+)/m)?.[1];
+if(!adminKey || adminKey.length<32 || adminKey.startsWith('replace-'))throw Error('ADMIN_KEY debe tener al menos 32 caracteres aleatorios en .env.local.');
+const database=new DatabaseSync('.data/state/database.sqlite');
+database.exec('PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS __rifa_migrations(name TEXT PRIMARY KEY);');
+for(const name of readdirSync('drizzle').filter(name=>name.endsWith('.sql')).sort()) {
+  if(database.prepare('SELECT name FROM __rifa_migrations WHERE name=?').get(name))continue;
+  database.exec('BEGIN IMMEDIATE');
+  try {database.exec(readFileSync('drizzle/'+name,'utf8'));database.prepare('INSERT INTO __rifa_migrations VALUES(?)').run(name);database.exec('COMMIT');}
+  catch(error){database.exec('ROLLBACK');throw error;}
+}
+database.close();
+console.log('Base SQLite y comprobantes privados listos en .data/state. Clave en .env.local; no se imprime.');
+console.log('Ejecutá npm run dev y abrí http://127.0.0.1:5173.');

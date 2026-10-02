@@ -9,7 +9,7 @@ export type Reservation = {
   numbers: string; created: number; expires: number;
 };
 export type PublicData = {
-  config: RaffleConfig; active: boolean;
+  config: RaffleConfig; active: boolean; remoteUploads?: boolean;
   tickets: { number: number; status: RequestStatus }[];
 };
 export const statusLabels: Record<RequestStatus, string> = {

@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22.13.0"
+    "node": "24.x"
   },
   "scripts": {
     "install:ci": "pnpm install --frozen-lockfile --prefer-offline",
-    "dev": "node scripts/run-framework.mjs dev",
-    "build": "node scripts/run-framework.mjs build",
-    "start": "node scripts/start-local.mjs",
+    "dev": "next dev --port 5173",
+    "build": "next build",
+    "start": "next start --port 5173",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "local:setup": "node scripts/local-setup.mjs",
@@ -18,12 +18,15 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
     "secrets:check": "node scripts/check-secrets.mjs",
-    "security:audit": "pnpm audit --audit-level=high"
+    "security:audit": "pnpm audit --audit-level=high",
+    "db:migrate": "node --env-file=.env.production.local scripts/remote-migrate.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@hookform/resolvers": "^5.7.1",
+    "@libsql/client": "0.18.0",
     "@shadcn/react": "^0.3.0",
+    "@vercel/blob": "2.8.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "^1.1.1",
@@ -47,26 +50,16 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.37.1",
-    "@cloudflare/workers-types": "4.20260515.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.2",
-    "@vitejs/plugin-rsc": "0.5.26",
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.6",
-    "json-rpc-2.0": "1.7.1",
-    "raw-body": "3.0.2",
-    "react-server-dom-webpack": "19.2.8",
     "tailwindcss": "4.2.1",
     "tw-animate-css": "^1.4.0",
-    "typescript": "5.9.3",
-    "vinext": "1.0.0-beta.5",
-    "vite": "8.0.16",
-    "wrangler": "4.92.0"
+    "typescript": "5.9.3"
   },
   "type": "module",
   "overrides": {
