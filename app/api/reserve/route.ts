@@ -77,7 +77,7 @@ export async function POST(req: Request) {
       // Keep an uploaded private Blob for retries with changed numbers after a conflict.
       if(!remoteStorage() && (!winner || winner.receipt !== uploaded)) await deleteReceipt(uploaded);
       if(winner && winner.token_hash===tokenHash && winner.fingerprint===fingerprint) return json({request:publicRequest(winner)});
-      const occupied = await db().prepare('SELECT number FROM tickets WHERE number IN (?,?)').bind(numbers[0],numbers[1]??numbers[0]).all<{number:number}>();
+      const occupied = await db().prepare('SELECT number FROM tickets WHERE number IN ('+numbers.map(()=>'?').join(',')+')').bind(...numbers).all<{number:number}>();
       if(occupied.results.length) return json({error:'Alguno de tus números acaba de reservarse. Conservamos tu selección; quitá los ocupados y elegí otros.',conflicts:occupied.results.map(t=>t.number)},409);
       if(!ready(await config())) return json({error:'La organización cerró las reservas. Tus datos se conservan.'},409);
       return fail(e);

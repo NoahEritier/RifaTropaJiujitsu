@@ -6,7 +6,7 @@ export const receiptPathPattern = /^receipts\/[a-f0-9-]{36}\/[a-f0-9]{64}\/[a-f0
 function localPath(path: string) {
   if(!receiptPathPattern.test(path)) throw Error('Invalid receipt path');
   if(process.env.VERCEL || process.env.NODE_ENV==='production' && !process.env.ALLOW_LOCAL_DATA) throw Error('Persistent storage not configured');
-  const root=resolve('.data/state'),target=resolve(root,path),rel=relative(root,target);
+  const root=resolve(/*turbopackIgnore: true*/ process.env.LOCAL_DATA_DIR || '.data/state'),target=resolve(root,path),rel=relative(root,target);
   if(rel.startsWith('..')||isAbsolute(rel)) throw Error('Invalid receipt path');
   return target;
 }
@@ -17,14 +17,14 @@ export async function putReceipt(path: string, bytes: Uint8Array) {
 export async function getReceipt(path: string) {
   if(!receiptPathPattern.test(path)) throw Error('Invalid receipt path');
   if(remoteStorage()) {
-    const result=await get(path,{access:'private',useCache:false});
+    const result=await get(path,{access:'private',useCache:false,token:process.env.BLOB_READ_WRITE_TOKEN});
     return result?.statusCode===200 ? result.stream : null;
   }
-  try { return new Uint8Array(await readFile(localPath(path))); }
+  try { return new Uint8Array(await readFile(/*turbopackIgnore: true*/ localPath(path))); }
   catch(error) {if((error as NodeJS.ErrnoException).code==='ENOENT')return null;throw error;}
 }
 export async function deleteReceipt(path: string) {
   if(!receiptPathPattern.test(path))throw Error('Invalid receipt path');
-  if(remoteStorage()) {await del(path);return;}
+  if(remoteStorage()) {await del(path,{token:process.env.BLOB_READ_WRITE_TOKEN});return;}
   try {await unlink(localPath(path));}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
 }

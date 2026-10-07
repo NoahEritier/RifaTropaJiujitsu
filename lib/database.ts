@@ -16,7 +16,7 @@ export class Database {
   private local?: DatabaseSync;
   private remote?: Client;
   readonly url?: string; readonly authToken?: string; readonly path: string;
-  constructor(url?: string, authToken?: string, path = resolve('.data/state/database.sqlite')) {this.url=url;this.authToken=authToken;this.path=path;}
+  constructor(url?: string, authToken?: string, path = resolve(process.env.LOCAL_DATA_DIR || '.data/state','database.sqlite')) {this.url=url;this.authToken=authToken;this.path=path;}
   prepare(sql: string) { return new Statement(this,sql); }
   private connection() {
     if(!this.local) {

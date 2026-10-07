@@ -13,7 +13,7 @@ const migration1=readFileSync(new URL('../drizzle/0001_secure_reservations.sql',
 function database(path=':memory:'){
   const db=new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys=ON;PRAGMA busy_timeout=5000;');
-  db.exec(migration0);db.exec(migration1);
+  db.exec(migration0);db.exec(migration1);db.exec(readFileSync('drizzle/0003_multiple_numbers.sql','utf8'));
   db.prepare('INSERT INTO settings VALUES(1,?)').run(JSON.stringify(configured));
   return db;
 }
@@ -29,7 +29,8 @@ function insert(db,id,numbers,{total=price(numbers.length),expires=Date.now()+36
 }
 test('precios exactos y cantidades inválidas',()=>{
   assert.equal(price(1),12000);assert.equal(price(2),20000);
-  for(const n of [0,3,-1,1.5])assert.throws(()=>price(n));
+  assert.equal(price(3),32000);assert.equal(price(4),40000);assert.equal(price(99),992000);assert.equal(price(100),1000000);
+  for(const n of [0,101,-1,1.5,NaN,Infinity])assert.throws(()=>price(n));
 });
 test('apertura requiere todos los datos y numeración confirmada',()=>{
   assert.equal(ready(defaults),false);assert.equal(ready(configured),true);
@@ -42,7 +43,8 @@ test('apertura requiere todos los datos y numeración confirmada',()=>{
 test('ambas numeraciones, límites y números repetidos',()=>{
   validateParticipant('Persona','5492245000000',[0,99],0);
   validateParticipant('Persona','5492245000000',[1,100],1);
-  for(const numbers of [[0],[101],[1,1],[],[1,2,3],[1.5],['1']])
+  validateParticipant('Persona','5492245000000',Array.from({length:100},(_,i)=>i+1),1);
+  for(const numbers of [[0],[101],[1,1],[],Array.from({length:101},(_,i)=>i+1),[1.5],['1']])
     assert.throws(()=>validateParticipant('Persona','5492245000000',numbers,1));
 });
 test('detecta firmas y rechaza formatos falsificados',()=>{
@@ -133,4 +135,17 @@ test('dos conexiones simultáneas: gana una reserva completa, sin duplicados',as
       assert.ok(verify.prepare('SELECT request_id FROM tickets').all().every(t=>t.request_id===winner.id));
     }finally{verify.close();}
   }finally{rmSync(directory,{recursive:true,force:true});}
+});
+test('compras múltiples: precio por pares, aprobación de 100 números y conflicto en el tercero revierte todo',()=>{
+ const db=database();try{
+  insert(db,'taken',[3]);
+  assert.throws(()=>insert(db,'conflict',[1,2,3]));
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM tickets WHERE number IN(1,2)').get().n,0);
+  insert(db,'three',[10,11,12]);assert.equal(db.prepare("SELECT total FROM requests WHERE id='three'").get().total,32000);
+  db.exec("UPDATE requests SET status='rejected' WHERE id IN('taken','three')");
+  insert(db,'all',Array.from({length:100},(_,i)=>i+1));
+  assert.equal(db.prepare("SELECT total FROM requests WHERE id='all'").get().total,1000000);
+  db.exec("UPDATE requests SET status='approved' WHERE id='all'");
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM tickets WHERE request_id='all'").get().n,100);
+ }finally{db.close();}
 });

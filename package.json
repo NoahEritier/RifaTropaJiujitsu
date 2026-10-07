@@ -62,10 +62,5 @@
     "typescript": "5.9.3"
   },
   "type": "module",
-  "overrides": {
-    "miniflare": {
-      "sharp": "0.35.4"
-    }
-  },
   "packageManager": "pnpm@11.25.0"
 }

@@ -29,7 +29,7 @@ function form(a,{name='Participante de prueba',mime='image/png',bytes=png,total=
   f.set('numbers',JSON.stringify(a.numbers));f.set('total',total);
   f.set('receipt',new File([bytes],'prueba.png',{type:mime}));return f;
 }
-function localDatabase(){return new DatabaseSync('.data/state/database.sqlite');}
+function localDatabase(){return new DatabaseSync((process.env.LOCAL_DATA_DIR||'.data/state')+'/database.sqlite');}
 async function settings(c){return api('/api/admin',{method:'POST',body:{action:'settings',config:c}});}
 function ok(label){console.log('OK:',label);}
 try{
@@ -121,7 +121,7 @@ try{
       for(const [scope,subject] of subjects)local.prepare('DELETE FROM rate_limits WHERE key=?').run(createHash('sha256').update(key+':'+scope+':'+subject).digest('hex'));
       if(cookie)local.prepare('DELETE FROM admin_sessions WHERE token_hash=?').run(createHash('sha256').update(key+':session:'+cookie.slice(13)).digest('hex'));
     }finally{local.close();}
-    for(const object of objects)unlinkSync('.data/state/'+object);
+    for(const object of objects)unlinkSync((process.env.LOCAL_DATA_DIR||'.data/state')+'/'+object);
     console.log('Datos temporales eliminados; configuración inicial restaurada.');
   }
 }

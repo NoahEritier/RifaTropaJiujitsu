@@ -8,7 +8,10 @@ const {chromium}=await import(playwrightModule?pathToFileURL(playwrightModule).h
 const base=process.env.TEST_BASE_URL||'http://127.0.0.1:5173';
 if(!['127.0.0.1','localhost'].includes(new URL(base).hostname))throw Error('Prueba sólo local.');
 const key=readFileSync('.env.local','utf8').match(/ADMIN_KEY\s*=\s*"([^"]+)"/)?.[1];
-const dbPath='.data/state/database.sqlite';
+const stateDirectory=process.env.LOCAL_DATA_DIR||'.data/state';
+const remoteBlob=process.env.QA_REMOTE_BLOB==='1';
+if(remoteBlob&&!stateDirectory.startsWith('.data/qa-'))throw Error('Blob real requiere base local aislada .data/qa-*');
+const dbPath=stateDirectory+'/database.sqlite';
 let db=new DatabaseSync(dbPath);
 assert.equal(db.prepare('SELECT COUNT(*) AS n FROM requests').get().n,0,'Sólo correr con base vacía.');
 const initialRow=db.prepare('SELECT value FROM settings WHERE id=1').get();
@@ -20,7 +23,8 @@ context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
 page.on('pageerror',e=>errors.push(e.message));
 const ids=[];
 mkdirSync('.sites-runtime/qa',{recursive:true});
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR5kAAAAASUVORK5CYII=','base64');
+const pngHeader=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR5kAAAAASUVORK5CYII=','base64');
+const png=remoteBlob?Buffer.concat([pngHeader,Buffer.alloc(5_000_000-pngHeader.length)]):pngHeader;
 try {
   await page.goto(base);await page.getByText('100 disponibles',{exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Reservas aún no habilitadas'}).isDisabled(),true);
@@ -42,6 +46,8 @@ try {
   await admin.getByLabel('Habilitar reservas y pagos.').check();
   await admin.getByRole('button',{name:'Guardar configuración'}).click();await admin.getByText('Cambios guardados.').waitFor();
   await page.reload();await page.getByRole('button',{name:'Número 01, disponible',exact:true}).click();
+  for(const n of ['02','03','04'])await page.getByRole('button',{name:'Número '+n+', disponible',exact:true}).click();
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Selección múltiple móvil');
   await page.getByLabel('Nombre y apellido').fill('Participante QA');
   await page.getByLabel('WhatsApp',{exact:true}).fill('5492245000019');
   await page.locator('input[type=file]').setInputFiles({name:'comprobante.png',mimeType:'image/png',buffer:Buffer.alloc(5000001)});
@@ -62,8 +68,9 @@ try {
   const responsePromise=page.waitForResponse(r=>r.url()===base+'/api/reserve'&&r.request().method()==='POST');
   await page.getByRole('button',{name:'Solicitar reserva',exact:true}).click();
   const response=await responsePromise,body=await response.json();
-  assert.equal(response.status(),201);assert.equal(body.request.total,12000);ids.push(body.request.id);
+  assert.equal(response.status(),201);assert.equal(body.request.total,40000);assert.equal(body.request.numbers.length,4);ids.push(body.request.id);
   await page.getByRole('heading',{name:'Solicitud recibida'}).waitFor();
+  if(remoteBlob){const r=await context.request.get(base+'/api/receipt?id='+body.request.id);assert.equal(r.status(),200);assert.deepEqual(await r.body(),png);console.log('OK: carga directa real a Blob privado y lectura protegida');}
   const code=await page.locator('.modal code').textContent();
   await page.getByRole('button',{name:'Ya guardé mi código'}).click();
   await admin.getByRole('button',{name:'Actualizar',exact:true}).click();
@@ -100,6 +107,6 @@ try {
     db.exec('COMMIT');
     db.prepare('DELETE FROM rate_limits WHERE key=?').run(createHash('sha256').update(key+':login:local').digest('hex'));
   }finally{db.close();}
-  for(const object of objects)unlinkSync('.data/state/'+object);
+  for(const object of objects){if(remoteBlob){const {del}=await import('@vercel/blob');await del(object,{token:process.env.BLOB_READ_WRITE_TOKEN});}else unlinkSync(stateDirectory+'/'+object);}
   console.log('Configuración inicial restaurada; solicitudes de QA eliminadas.');
 }

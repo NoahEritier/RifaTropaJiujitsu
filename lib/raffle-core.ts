@@ -20,9 +20,8 @@ export const MAX_BODY_BYTES = 5_100_000;
 export const tokenPattern = /^[a-f0-9]{64}$/;
 export const idPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 export function price(count: number) {
-  if (count === 1) return 12000;
-  if (count === 2) return 20000;
-  throw new Error('Elegí uno o dos números.');
+  if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error('Elegí entre 1 y 100 números.');
+  return Math.floor(count / 2) * 20000 + (count % 2) * 12000;
 }
 export function ready(c: RaffleConfig) {
   return Boolean(c.open && c.alias && c.holder && /^\d{8,15}$/.test(c.phone)
@@ -53,10 +52,10 @@ export function parseConfig(value: unknown): RaffleConfig {
 }
 export function validateParticipant(name: string, phone: string, numbers: unknown, start: number): asserts numbers is number[] {
   if (name.length < 3 || name.length > 100 || !/^\d{8,15}$/.test(phone)
-    || !Array.isArray(numbers) || numbers.length < 1 || numbers.length > 2
+    || !Array.isArray(numbers) || numbers.length < 1 || numbers.length > 100
     || new Set(numbers).size !== numbers.length
     || numbers.some(n => !Number.isInteger(n) || n < start || n > start + 99))
-    throw new Error('Revisá tus datos y elegí uno o dos números válidos.');
+    throw new Error('Revisá tus datos y elegí entre 1 y 100 números válidos.');
 }
 export function detectMime(bytes: Uint8Array) {
   if (bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'image/jpeg';

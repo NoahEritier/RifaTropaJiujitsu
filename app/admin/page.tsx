@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import DrawWheel from '@/components/draw-wheel';
 import { useCallback, useEffect, useState } from 'react';
 import { money, statusLabels, type RaffleConfig, type Reservation, type RequestStatus } from '@/lib/raffle-core';
 type AdminData = {
@@ -70,7 +71,7 @@ export default function Admin() {
         <label className="consent"><input type="checkbox" checked={data.config.numberingConfirmed} disabled={busy||data.numberingLocked} onChange={e=>set('numberingConfirmed',e.target.checked)}/><span>Confirmar la numeración antes de abrir.</span></label>
         <label className="consent"><input type="checkbox" checked={data.config.open} disabled={busy} onChange={e=>set('open',e.target.checked)}/><span>Habilitar reservas y pagos.</span></label><button className="primary" disabled={busy}>Guardar configuración</button>
       </form></section>
-      <section className="admin-card"><h2>Solicitudes y pagos</h2><p className="muted">Verificá la acreditación en la cuenta antes de aprobar. Rechazar libera los números.</p>
+      <DrawWheel/><section className="admin-card"><h2>Solicitudes y pagos</h2><p className="muted">Verificá la acreditación en la cuenta antes de aprobar. Rechazar libera los números.</p>
         <form className="filter-bar" onSubmit={e=>{e.preventDefault();setQuery(search.trim());setState(filter);setPage(1);}}><label>Buscar nombre, teléfono o número<input value={search} onChange={e=>setSearch(e.target.value)} maxLength={100}/></label><label>Estado<select value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Todos</option>{Object.entries(statusLabels).map(([status,label])=><option key={status} value={status}>{label}</option>)}</select></label><button type="submit" disabled={busy}>Buscar</button></form>
         <div className="actions">{[['participants','Participantes'],['numbers','Números'],['payments','Pagos']].map(([type,label])=><button key={type} onClick={()=>void download('/api/export?type='+type,'rifa-'+type+'.csv')}>Exportar {label} CSV</button>)}</div>
         <p className="small">{data.count} resultados · Página {data.page} de {Math.max(1,Math.ceil(data.count/50))}</p>

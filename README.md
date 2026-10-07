@@ -52,3 +52,9 @@ Repositorio: https://github.com/NoahEritier/RifaTropaJiujitsu. Proyecto Vercel: 
 Para producción hacen falta Turso (SQLite persistente), Vercel Blob **privado**, una ADMIN_KEY aleatoria propia de producción y las migraciones. Ver [docs/PUBLICACION.md](docs/PUBLICACION.md). No subir `.env*`, `.dev.vars`, `.data`, `.wrangler`, `.vercel`, respaldos ni CSV reales. `.env.example` es el único archivo de ejemplo publicable.
 
 El código de Cloudflare/Sites que permanece en build/, scripts/ y vite.config.ts es histórico: no participa de dev/build/start y sus dependencias fueron retiradas. No ejecutar esos scripts. La configuración activa está en Next.js y los scripts de setup, migración y respaldo.
+## Ruleta en Administración
+La ruleta permite ensayar la animación sin guardar un ganador. El sorteo definitivo requiere 100 números con pago aprobado; el servidor elige con aleatoriedad criptográfica, guarda el ganador y la lista de números participantes en una transacción y cierra reservas. No puede repetirse ni borrarse desde la aplicación. El resultado se recupera al recargar y puede copiarse para WhatsApp. Aplicar las migraciones antes de desplegar esta versión.
+
+Compras de 1 a 100 números: cada par cuesta $20.000 y cada número suelto $12.000. El importe se calcula también en el servidor y se valida en la base. Si hay conflicto con cualquiera de los números elegidos, se revierte la reserva completa.
+
+Ver [plan y resultados del flujo](docs/PRUEBAS-FLUJO.md), incluidos límites y pendientes de producción.

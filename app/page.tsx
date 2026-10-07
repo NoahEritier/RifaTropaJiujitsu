@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
 import { Ticket, ShieldCheck, Check, Copy, ChevronDown } from 'lucide-react';
-import { detectMime, MAX_FILE_BYTES, money, type PublicData } from '@/lib/raffle-core';
+import { detectMime, MAX_FILE_BYTES, money, price, type PublicData } from '@/lib/raffle-core';
 
 type Confirmation = { id: string; total: number; numbers: number[]; expires: number; code: string };
 type Attempt = { id: string; code: string };
@@ -62,7 +62,7 @@ export default function Page() {
     } finally {if(version===fileVersion.current)setCheckingFile(false);}
   }
   const c=data?.config, tickets=data?.tickets||[];
-  const total=selected.length===2?20000:selected.length*12000;
+  const total=selected.length?price(selected.length):0;
   const conflicts=selected.filter(n=>n<(c?.start??1)||n>(c?.start??1)+99||tickets.some(t=>t.number===n));
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -133,7 +133,7 @@ export default function Page() {
       </aside>
       <section className="workspace">
         <div className="topline"><span className="eyebrow">100 NÚMEROS</span><span className="stage">{data?.active?'Reservas abiertas':'En preparación'}</span></div>
-        <h2 className="workspace-title">Elegí tus números</h2><p className="muted">Uno para participar. Dos para aprovechar la promo.</p>
+        <h2 className="workspace-title">Elegí tus números</h2><p className="muted">Elegí todos los disponibles que quieras. Cada par cuesta $20.000; un número suelto, $12.000.</p>
         <div className="price-row"><div><span>1 NÚMERO</span><strong>$12.000</strong></div><div className="promo"><span>2 NÚMEROS <b>PROMO</b></span><strong>$20.000</strong></div></div>
         {data&&!data.active&&<div className="notice"><ShieldCheck size={20}/><div><b>Estamos preparando la rifa.</b><p>Podés explorar los números. Esperá la apertura para transferir y solicitar una reserva.</p></div></div>}
         <div className="grid-heading"><h3><span className="step">1</span> Disponibilidad</h3><span>{data?`${100-tickets.length} disponibles`:'Actualizando…'}</span></div>
@@ -147,13 +147,13 @@ export default function Page() {
             return <button type="button" key={n} disabled={!data||busy||(!!t&&!chosen)}
               className={`number ${t?.status||''} ${chosen&&!t?'selected':''} ${chosen&&t?'conflict':''}`}
               aria-pressed={chosen} aria-label={`Número ${String(n).padStart(2,'0')}, ${label}${chosen&&t?', quitá este número de tu selección':''}`}
-              onClick={()=>{setError('');if(chosen)select(s=>s.filter(x=>x!==n));else if(selected.length<2)select(s=>[...s,n]);else setError('Podés elegir hasta dos números por solicitud.');}}>
+              onClick={()=>{setError('');if(chosen)select(s=>s.filter(x=>x!==n));else select(s=>[...s,n]);}}>
               {String(n).padStart(2,'0')}<span className="ticket-mark" aria-hidden="true">{t?(t.status==='approved'?'✓':'◷'):chosen?'✓':''}</span>
             </button>;
           })}
         </div>
         {conflicts.length>0&&<div className="error" role="alert">No están disponibles los números {conflicts.map(n=>String(n).padStart(2,'0')).join(', ')}. Conservamos tu selección: quitá esos números y elegí otros. <button type="button" disabled={busy} onClick={()=>select(s=>s.filter(n=>!conflicts.includes(n)))}>Quitar números no disponibles</button></div>}
-        <div className="selection" aria-live="polite"><Ticket size={23}/><div><span>TUS NÚMEROS</span><strong>{selected.length?selected.map(n=>String(n).padStart(2,'0')).join(' · '):'Elegí uno o dos'}</strong></div><div className="selection-total"><span>TOTAL</span><strong>{money(total)}</strong></div></div>
+        <div className="selection" aria-live="polite"><Ticket size={23}/><div><span>TUS NÚMEROS</span><strong>{selected.length?selected.map(n=>String(n).padStart(2,'0')).join(' · '):'Elegí tus números'}</strong></div><div className="selection-total"><span>TOTAL</span><strong>{money(total)}</strong></div></div>
         <form ref={formRef} onSubmit={submit}>
           <h3><span className="step">2</span> Tus datos</h3>
           <div className="fields"><label>Nombre y apellido<input name="name" autoComplete="name" placeholder="Tu nombre completo" minLength={3} maxLength={100} required disabled={!data?.active||busy}/></label><label>WhatsApp<input name="phone" type="tel" autoComplete="tel" placeholder="País + código de área + número" pattern="[+0-9 ()-]{8,25}" required disabled={!data?.active||busy}/></label></div>

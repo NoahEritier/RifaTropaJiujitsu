@@ -14,7 +14,7 @@ const running=await new Promise(resolveResult=>{
   socket.once('error',()=>resolveResult(false));
 });
 if(running)throw Error('Detené la página local antes del respaldo o la recuperación. LOCAL_PORT permite indicar otro puerto.');
-const state=resolve(root,'.data/state'),backupRoot=resolve(root,'backups');
+const state=resolve(root,process.env.LOCAL_DATA_DIR || '.data/state'),backupRoot=resolve(root,'backups');
 const lockHash=createHash('sha256').update(await readFile('pnpm-lock.yaml')).digest('hex');
 function inside(base,path) {const rel=relative(base,path);return rel!==''&&!rel.startsWith('..')&&!isAbsolute(rel);}
 async function inventory(base,directory='') {

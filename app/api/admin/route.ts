@@ -29,6 +29,7 @@ export async function POST(req: Request) {
     if(body.action==='settings') {
       let c;
       try { c = parseConfig(body.config); } catch(e) { return json({error:(e as Error).message},400); }
+      if(c.open && await db().prepare('SELECT 1 FROM raffle_draw WHERE id=1').first())return json({error:'El sorteo ya terminó. No se pueden reabrir reservas.'},400);
       if(c.open && process.env.VERCEL && !remoteStorage())return json({error:'Configurá el almacenamiento privado antes de abrir reservas.'},400);
       const old = await config();
       const used = await db().prepare('SELECT 1 FROM requests LIMIT 1').first();

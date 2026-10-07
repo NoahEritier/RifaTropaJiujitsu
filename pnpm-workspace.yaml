@@ -18,7 +18,8 @@ packageImportMethod: auto
 verifyDepsBeforeRun: false
 optimisticRepeatInstall: false
 overrides:
-  miniflare>sharp: 0.35.4
+  sharp: 0.35.5
+  source-map-js: 1.2.2
   browserslist: 4.28.7
   baseline-browser-mapping: 2.11.0
   fast-uri: 3.1.8
@@ -32,3 +33,7 @@ overrides:
   'fflate@0.7': 0.7.5
   'js-yaml@4': 4.3.2
   'image-size@2': 2.0.3
+
+minimumReleaseAgeExclude:
+  - source-map-js@1.2.2
+  - sharp@0.35.5
